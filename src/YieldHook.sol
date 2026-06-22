@@ -34,6 +34,7 @@ contract YieldHook is IHooks, IUnlockCallback {
     /// @dev 0.10% yield fee taken from each swap's output
     uint256 public constant YIELD_FEE_BPS = 10;
     uint256 public constant BPS_DENOMINATOR = 10_000;
+    uint256 public constant MAX_YIELD_FEE_BPS = 100; // hard cap at 1%
 
     // ── Storage ──────────────────────────────────────────────────────────────
 
