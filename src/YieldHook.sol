@@ -49,17 +49,22 @@ contract YieldHook is IHooks, IUnlockCallback {
     /// @notice Cumulative yield donated back to each pool (for analytics / demo)
     mapping(PoolId => uint256) public totalYieldDonated;
 
+    /// @notice Per-pool yield fee override in BPS (0 = use global YIELD_FEE_BPS)
+    mapping(PoolId => uint256) public poolYieldFeeBps;
+
     // ── Events ───────────────────────────────────────────────────────────────
 
     event VaultSet(Currency indexed currency, address vault);
     event YieldFeeCollected(PoolId indexed poolId, Currency indexed currency, uint256 amount);
     event YieldCompounded(PoolId indexed poolId, Currency indexed currency, uint256 yieldAmount);
+    event PoolFeeSet(PoolId indexed poolId, uint256 feeBps);
 
     // ── Errors ───────────────────────────────────────────────────────────────
 
     error NotPoolManager();
     error VaultAssetMismatch();
     error ZeroCompound();
+    error FeeTooHigh();
 
     // ── Modifiers ────────────────────────────────────────────────────────────
 
@@ -75,6 +80,15 @@ contract YieldHook is IHooks, IUnlockCallback {
     }
 
     // ── Admin ────────────────────────────────────────────────────────────────
+
+    /// @notice Set a per-pool yield fee override.
+    /// @param key    The pool to configure
+    /// @param feeBps Fee in basis points (0 = use global default, max = MAX_YIELD_FEE_BPS)
+    function setPoolYieldFee(PoolKey calldata key, uint256 feeBps) external {
+        if (feeBps > MAX_YIELD_FEE_BPS) revert FeeTooHigh();
+        poolYieldFeeBps[key.toId()] = feeBps;
+        emit PoolFeeSet(key.toId(), feeBps);
+    }
 
     /// @notice Register a yield vault for a currency. Pass address(0) to disable.
     /// @param currency The token currency to register a vault for
@@ -188,7 +202,9 @@ contract YieldHook is IHooks, IUnlockCallback {
         if (address(vault) == address(0)) return (IHooks.afterSwap.selector, 0);
 
         uint256 absOutput = uint256(uint128(outputDelta));
-        uint256 fee = (absOutput * YIELD_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 feeBps = poolYieldFeeBps[key.toId()];
+        if (feeBps == 0) feeBps = YIELD_FEE_BPS;
+        uint256 fee = (absOutput * feeBps) / BPS_DENOMINATOR;
         if (fee == 0) return (IHooks.afterSwap.selector, 0);
 
         // Pull `fee` tokens from the PoolManager to this hook
